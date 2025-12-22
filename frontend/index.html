@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper - Educational Project</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Business Contact Finder</h1>
+            <p class="subtitle">Educational Web Scraper Demo</p>
+            <div class="disclaimer">
+                <strong>Educational Purpose Only:</strong> This tool demonstrates web scraping with BeautifulSoup and Selenium.
+                Only use on sources that permit scraping. Always check robots.txt and Terms of Service.
+            </div>
+        </header>
+
+        <main>
+            <div class="search-section">
+                <div class="search-box-container">
+                    <input
+                        type="text"
+                        id="search_box"
+                        placeholder="Enter search term (e.g., 'restaurants in coimbatore')"
+                        autocomplete="off"
+                    >
+                    <button id="search_btn">
+                        <span class="btn-text">Search</span>
+                        <span class="btn-icon">&#128269;</span>
+                    </button>
+                </div>
+                <div class="search-hint">
+                    Try: "restaurants in coimbatore", "hotels in chennai", "cafes in bangalore"
+                </div>
+            </div>
+
+            <div id="loading_spinner" class="loading-spinner hidden">
+                <div class="spinner"></div>
+                <p>Searching and scraping data... This may take a moment.</p>
+            </div>
+
+            <div id="error_container" class="error-container hidden">
+                <div class="error-icon">&#9888;</div>
+                <div class="error-message" id="error_message"></div>
+                <button class="error-close" onclick="closeError()">&#10005;</button>
+            </div>
+
+            <div id="results_container" class="results-container">
+                <div class="results-header hidden" id="results_header">
+                    <h2>Results</h2>
+                    <span class="results-count" id="results_count"></span>
+                </div>
+                <div id="results_list" class="results-list"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Built with Flask, Selenium, and BeautifulSoup</p>
+            <p class="warning">For educational purposes only - Always respect website ToS and robots.txt</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
