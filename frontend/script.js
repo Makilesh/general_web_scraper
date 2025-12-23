@@ -40,24 +40,31 @@ function handleSearch(event) {
         return;
     }
 
+    // Get selected search method
+    const searchMethod = document.querySelector('input[name="search_method"]:checked').value;
+
     // Reset UI
     hideError();
     hideResults();
     showLoading();
 
-    // Fetch results
-    fetchResults(searchTerm);
+    // Fetch results with selected method
+    fetchResults(searchTerm, searchMethod);
 }
 
 /**
- * Makes POST request to /api/search endpoint
+ * Makes POST request to appropriate API endpoint based on search method
  *
  * @param {string} searchTerm - User input
+ * @param {string} method - 'google' or 'maps'
  * @returns {Promise} Promise with API response
  */
-async function fetchResults(searchTerm) {
+async function fetchResults(searchTerm, method = 'google') {
     try {
-        const response = await fetch(`${API_BASE_URL}/api/search`, {
+        // Choose endpoint based on method
+        const endpoint = method === 'google' ? '/api/search-google' : '/api/search';
+        
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

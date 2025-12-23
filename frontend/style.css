@@ -70,6 +70,44 @@ h1 {
     margin-bottom: 2rem;
 }
 
+.search-method-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.toggle-option {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.toggle-option:hover {
+    border-color: var(--primary-color);
+    background-color: #eff6ff;
+}
+
+.toggle-option input[type="radio"] {
+    margin-right: 0.5rem;
+    cursor: pointer;
+}
+
+.toggle-option input[type="radio"]:checked + span {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.toggle-option span {
+    transition: all 0.2s;
+}
+
 .search-box-container {
     display: flex;
     gap: 1rem;

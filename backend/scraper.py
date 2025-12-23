@@ -40,6 +40,80 @@ def initialize_driver():
         raise
 
 
+def search_google_web(search_term):
+    """
+    Uses Google Search to fetch top 10 website URLs directly
+
+    Parameters:
+        search_term (string): What to search for (e.g., "restaurants in coimbatore")
+
+    Returns:
+        List of website URLs from Google Search results
+    """
+    driver = None
+    try:
+        driver = initialize_driver()
+
+        # Construct Google Search URL
+        encoded_term = search_term.replace(' ', '+')
+        search_url = f"https://www.google.com/search?q={encoded_term}"
+
+        print(f"Searching Google for: {search_term}")
+        driver.get(search_url)
+        time.sleep(2)
+
+        # Extract search results
+        page_source = driver.page_source
+        soup = BeautifulSoup(page_source, 'lxml')
+
+        # Find all search result links
+        websites = []
+        
+        # Google search results are in <a> tags within divs with specific classes
+        # Look for actual website links (not Google's internal links)
+        search_results = soup.find_all('a', href=True)
+        
+        for result in search_results:
+            href = result.get('href', '')
+            
+            # Extract actual URLs from Google's redirect links
+            if '/url?q=' in href:
+                # Parse the actual URL
+                actual_url = href.split('/url?q=')[1].split('&')[0]
+                
+                # Filter out Google's own links and unwanted domains
+                excluded = ['google.com', 'youtube.com', 'facebook.com', 'instagram.com', 
+                           'twitter.com', 'linkedin.com', 'wikipedia.org', 'maps.google']
+                
+                if actual_url.startswith('http') and not any(ex in actual_url for ex in excluded):
+                    websites.append(actual_url)
+            
+            # Also check for direct links
+            elif href.startswith('http') and '/url?' not in href:
+                excluded = ['google.com', 'youtube.com', 'facebook.com', 'instagram.com',
+                           'twitter.com', 'linkedin.com', 'wikipedia.org', 'maps.google']
+                if not any(ex in href for ex in excluded):
+                    websites.append(href)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_websites = []
+        for site in websites:
+            if site not in seen and len(unique_websites) < 10:
+                seen.add(site)
+                unique_websites.append(site)
+        
+        print(f"Found {len(unique_websites)} unique websites from Google Search")
+        return unique_websites
+
+    except Exception as e:
+        print(f"Error searching Google: {e}")
+        return []
+    finally:
+        if driver:
+            driver.quit()
+
+
 def search_business_directory(search_term):
     """
     Uses Google Maps to fetch business result URLs
@@ -179,6 +253,31 @@ def scrape_google_maps_page(url):
             driver.quit()
 
 
+def scrape_with_requests(url):
+    """
+    Fast lightweight scraping using requests library (no browser needed)
+    
+    Parameters:
+        url: Website URL to scrape
+    
+    Returns:
+        Dictionary with email and phone
+    """
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'lxml')
+        return extract_contact_info_from_website(response.text, soup)
+    
+    except Exception as e:
+        print(f"    Requests scraping failed: {e}")
+        return {'email': None, 'phone': None}
+
+
 def scrape_single_page(url, driver=None):
     """
     Opens business website URL with Selenium and scrapes for contact info
@@ -190,6 +289,18 @@ def scrape_single_page(url, driver=None):
     Returns:
         Dictionary with email and additional contact details
     """
+    # Try fast method first (requests)
+    print(f"  Trying fast scraping for: {url}")
+    fast_result = scrape_with_requests(url)
+    
+    if fast_result.get('email'):
+        print(f"  ✓ Email found with fast method: {fast_result['email']}")
+        fast_result['website'] = url
+        return fast_result
+    
+    # If fast method didn't find email, use Selenium for dynamic content
+    print(f"  No email from fast method, using browser...")
+    
     close_driver = False
     if driver is None:
         driver = initialize_driver()
@@ -197,35 +308,65 @@ def scrape_single_page(url, driver=None):
     
     try:
         driver.get(url)
-        time.sleep(2)
+        time.sleep(3)
         
-        # Get page source
+        # Scroll down to load lazy content
+        try:
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1)
+        except:
+            pass
+        
+        # Get page source after JavaScript rendering
         page_source = driver.page_source
         soup = BeautifulSoup(page_source, 'lxml')
 
         # Extract contact info from main page
         contact_info = extract_contact_info_from_website(page_source, soup)
         
+        if contact_info.get('email'):
+            print(f"  ✓ Email found on homepage: {contact_info['email']}")
+        
         # If no email found, try to find and visit contact/about pages
         if not contact_info.get('email'):
+            print(f"  No email on homepage, searching for contact pages...")
             contact_pages = find_contact_pages(soup, url)
-            for contact_url in contact_pages[:2]:  # Try first 2 contact pages
+            
+            if contact_pages:
+                print(f"  Found {len(contact_pages)} potential contact pages")
+            
+            for idx, contact_url in enumerate(contact_pages[:2], 1):  # Try first 2 contact pages
                 try:
-                    print(f"    Checking contact page: {contact_url}")
+                    print(f"    [{idx}] Checking: {contact_url}")
                     driver.get(contact_url)
-                    time.sleep(1)
+                    time.sleep(2)
+                    
+                    # Scroll contact page too
+                    try:
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(0.5)
+                    except:
+                        pass
+                    
                     contact_page_source = driver.page_source
                     contact_soup = BeautifulSoup(contact_page_source, 'lxml')
                     additional_info = extract_contact_info_from_website(contact_page_source, contact_soup)
                     
                     if additional_info.get('email'):
                         contact_info['email'] = additional_info['email']
+                        print(f"    ✓ Email found on contact page: {additional_info['email']}")
                         break
+                    else:
+                        print(f"    ✗ No email found on this page")
+                    
                     if additional_info.get('phone') and not contact_info.get('phone'):
                         contact_info['phone'] = additional_info['phone']
                 except Exception as e:
                     print(f"    Error checking contact page: {e}")
                     continue
+        
+        if not contact_info.get('email'):
+            print(f"  ✗ No email found anywhere on {url}")
 
         contact_info['website'] = url
         return contact_info
@@ -320,18 +461,33 @@ def extract_contact_info_from_website(page_source, soup=None):
     except:
         pass
 
-    # Method 2: Look in specific elements (footer, contact sections)
+    # Method 2: Look for emails in specific HTML attributes
     if not email:
         try:
-            # Check footer, contact divs, etc.
-            contact_sections = soup.find_all(['footer', 'div'], class_=re.compile(r'(contact|footer|email)', re.I))
+            # Check data attributes, aria-labels, etc.
+            elements_with_email = soup.find_all(attrs={'data-email': True})
+            for elem in elements_with_email:
+                potential_email = elem.get('data-email', '')
+                if '@' in potential_email and '.' in potential_email:
+                    email = potential_email.lower()
+                    break
+        except:
+            pass
+
+    # Method 3: Look in specific elements (footer, contact sections)
+    if not email:
+        try:
+            # Check footer, contact divs, headers, etc.
+            contact_sections = soup.find_all(['footer', 'div', 'section', 'header'], 
+                                            class_=re.compile(r'(contact|footer|email|info|reach)', re.I))
             for section in contact_sections:
                 section_text = section.get_text()
                 email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
                 emails = re.findall(email_pattern, section_text, re.I)
                 
                 # Filter out common non-business emails
-                excluded_patterns = ['example.com', 'domain.com', 'email.com', 'test.com', 'wix.com', 'sitelock.com', 'placeholder']
+                excluded_patterns = ['example.com', 'domain.com', 'email.com', 'test.com', 'wix.com', 
+                                   'sitelock.com', 'placeholder', 'yoursite', 'yourdomain']
                 valid_emails = [e for e in emails if not any(pattern in e.lower() for pattern in excluded_patterns)]
                 
                 if valid_emails:
@@ -340,18 +496,37 @@ def extract_contact_info_from_website(page_source, soup=None):
         except:
             pass
 
-    # Method 3: General page source regex search
+    # Method 4: Look for obfuscated emails (e.g., "info [at] company [dot] com")
+    if not email:
+        try:
+            obfuscated_pattern = r'([A-Za-z0-9._%+-]+)\s*[\[\(]?\s*@\s*[\]\)]?\s*([A-Za-z0-9.-]+)\s*[\[\(]?\s*\.\s*[\]\)]?\s*([A-Za-z]{2,})'
+            matches = re.findall(obfuscated_pattern, page_source, re.I)
+            if matches:
+                email = f"{matches[0][0]}@{matches[0][1]}.{matches[0][2]}".lower()
+        except:
+            pass
+
+    # Method 5: General page source regex search with better filtering
     if not email:
         try:
             email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
             emails = re.findall(email_pattern, page_source, re.I)
             
-            # Filter out common non-business emails and image file patterns
+            # More comprehensive filtering
             excluded_patterns = ['example.com', 'domain.com', 'email.com', 'test.com', 'wix.com', 
-                               'sitelock.com', 'schema.org', 'w3.org', 'placeholder', '@2x.png', '@3x.png']
+                               'sitelock.com', 'schema.org', 'w3.org', 'placeholder', '@2x.png', '@3x.png',
+                               'googletagmanager', 'analytics', 'facebook.com', 'twitter.com', 'instagram.com']
             valid_emails = [e for e in emails if not any(pattern in e.lower() for pattern in excluded_patterns)]
             
-            if valid_emails:
+            # Prefer emails with common business prefixes
+            business_prefixes = ['info', 'contact', 'hello', 'support', 'mail', 'inquiry', 'sales', 'admin']
+            for e in valid_emails:
+                if any(prefix in e.lower() for prefix in business_prefixes):
+                    email = e.lower()
+                    break
+            
+            # If no business prefix, take first valid email
+            if not email and valid_emails:
                 email = valid_emails[0].lower()
         except:
             pass
@@ -373,7 +548,8 @@ def extract_contact_info_from_website(page_source, soup=None):
     if not phone:
         try:
             # Look in contact sections first
-            contact_sections = soup.find_all(['footer', 'div'], class_=re.compile(r'(contact|footer|phone|tel)', re.I))
+            contact_sections = soup.find_all(['footer', 'div', 'section'], 
+                                            class_=re.compile(r'(contact|footer|phone|tel|call)', re.I))
             search_text = ' '.join([section.get_text() for section in contact_sections]) if contact_sections else page_source
             
             phone_patterns = [
@@ -457,4 +633,75 @@ def scrape_all_results(maps_urls_list):
         time.sleep(2)
 
     return results
+
+
+def scrape_google_search_results(search_term):
+    """
+    NEW METHOD: Uses Google Search to find websites and scrape them directly
+    This is simpler and faster than Google Maps approach
+    
+    Parameters:
+        search_term (string): Search query (e.g., "restaurants in coimbatore")
+    
+    Returns:
+        List of dictionaries with contact info from top 10 Google Search results
+    """
+    print(f"\n=== GOOGLE SEARCH METHOD ===")
+    print(f"Searching: {search_term}\n")
+    
+    # Step 1: Get website URLs from Google Search
+    website_urls = search_google_web(search_term)
+    
+    if not website_urls:
+        print("No websites found in Google Search results")
+        return []
+    
+    print(f"\nFound {len(website_urls)} websites to scrape\n")
+    
+    # Step 2: Scrape each website
+    results = []
+    
+    for idx, website_url in enumerate(website_urls, 1):
+        print(f"[{idx}/{len(website_urls)}] Processing: {website_url}")
+        
+        try:
+            # Extract business name from URL
+            from urllib.parse import urlparse
+            parsed_url = urlparse(website_url)
+            domain = parsed_url.netloc.replace('www.', '')
+            business_name = domain.split('.')[0].title()
+            
+            # Scrape the website for contact info
+            website_data = scrape_single_page(website_url)
+            
+            email = website_data.get('email')
+            phone = website_data.get('phone')
+            
+            if email:
+                print(f"  ✓ Found email: {email}")
+            if phone:
+                print(f"  ✓ Found phone: {phone}")
+            if not email and not phone:
+                print(f"  ✗ No contact info found")
+            
+            result = {
+                'business_name': business_name,
+                'email': email,
+                'phone': phone,
+                'website': website_url,
+                'source_url': website_url
+            }
+            
+            results.append(result)
+            
+            # Rate limiting
+            time.sleep(1.5)
+            
+        except Exception as e:
+            print(f"  Error processing {website_url}: {e}")
+            continue
+    
+    print(f"\n=== Completed: {len(results)} websites processed ===\n")
+    return results
+
 

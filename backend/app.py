@@ -30,6 +30,10 @@ def create_app():
     def search():
         return route_search()
 
+    @app.route('/api/search-google', methods=['GET', 'POST'])
+    def search_google():
+        return route_search_google()
+
     @app.route('/api/status', methods=['GET'])
     def status():
         return route_status()
@@ -39,7 +43,8 @@ def create_app():
         return jsonify({
             'message': 'Web Scraper API - Educational Project',
             'endpoints': {
-                '/api/search': 'POST - Search and scrape business data',
+                '/api/search': 'POST - Search using Google Maps',
+                '/api/search-google': 'POST - Search using Google Search (faster)',
                 '/api/status': 'GET - Check API status'
             }
         })
@@ -100,6 +105,61 @@ def route_search():
 
     except Exception as e:
         print(f"Error in route_search: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+def route_search_google():
+    """
+    NEW: Uses Google Search instead of Google Maps for faster results
+    
+    Parameters:
+        search_term (from request body)
+    
+    Returns:
+        JSON response with contacts from Google Search results
+    """
+    try:
+        # Get search term from request
+        if request.method == 'POST':
+            data = request.get_json()
+            search_term = data.get('search_term', '').strip()
+        else:
+            search_term = request.args.get('search_term', '').strip()
+
+        # Validate search term
+        if not search_term:
+            return jsonify({
+                'status': 'error',
+                'message': 'Search term is required'
+            }), 400
+
+        print(f"Google Search method for: {search_term}")
+
+        # Use Google Search scraper
+        raw_data = scraper.scrape_google_search_results(search_term)
+
+        if not raw_data:
+            return jsonify({
+                'status': 'success',
+                'search_term': search_term,
+                'results_count': 0,
+                'data': [],
+                'message': 'No results found for the given search term'
+            })
+
+        print(f"Scraped {len(raw_data)} websites from Google Search")
+
+        # Process and clean data
+        response = data_processor.process_scraped_data(raw_data, search_term)
+
+        return jsonify(response)
+
+    except Exception as e:
+        print(f"Error in route_search_google: {e}")
         traceback.print_exc()
         return jsonify({
             'status': 'error',
